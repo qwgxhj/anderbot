@@ -269,7 +269,7 @@ curl http://127.0.0.1:3001
 
 ```bash
 # 查看端口占用
-sudo lsof -i :8099
+sudo lsof -i :1145
 
 # 或更换端口（修改 .env 中的 ANDERBOT_PORT）
 ```
