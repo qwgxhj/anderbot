@@ -1,0 +1,8 @@
+{
+  "plugins": [
+    "anderbot.plugins.help",
+    "anderbot.plugins.echo",
+    "anderbot.plugins.admin",
+    "anderbot.plugins.ai_chat"
+  ]
+}

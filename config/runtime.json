@@ -1,0 +1,16 @@
+{
+  "enabled_groups": [],
+  "plugin_order": [
+    "anderbot.plugins.help",
+    "anderbot.plugins.echo",
+    "anderbot.plugins.admin",
+    "anderbot.plugins.ai_chat"
+  ],
+  "webhooks": [],
+  "feature_flags": {
+    "ai": true,
+    "web_api": true,
+    "event_bus": true,
+    "plugin_runtime": true
+  }
+}

@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>__CONSOLE_TITLE__</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, Segoe UI, system-ui, sans-serif; background: #0b1020; color: #e5e7eb; }
+    .wrap { display: grid; grid-template-columns: 360px 1fr; min-height: 100vh; }
+    .side { padding: 20px; border-right: 1px solid #1f2937; background: #0f172a; }
+    .main { padding: 20px; }
+    .card { background: #111827; border: 1px solid #1f2937; border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+    h1, h2, h3 { margin: 0 0 12px; }
+    .muted { color: #94a3b8; font-size: 12px; }
+    .status { display: grid; gap: 8px; font-size: 14px; }
+    .events { height: calc(100vh - 120px); overflow: auto; white-space: pre-wrap; }
+    .event { padding: 10px; border-bottom: 1px solid #1f2937; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #1d4ed8; font-size: 12px; margin-right: 8px; }
+    code { color: #93c5fd; }
+    .grid { display: grid; gap: 12px; }
+    .row { display: grid; gap: 8px; }
+    input, textarea, button {
+      width: 100%; border-radius: 10px; border: 1px solid #334155; background: #0b1220; color: #e5e7eb;
+      padding: 10px 12px; font: inherit;
+    }
+    textarea { min-height: 96px; resize: vertical; }
+    button { cursor: pointer; background: #1d4ed8; border: none; }
+    button.secondary { background: #334155; }
+    button.danger { background: #b91c1c; }
+    button[disabled] { opacity: .45; cursor: not-allowed; }
+    .toolbar { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .hint { font-size: 12px; color: #cbd5e1; }
+    .ok { color: #86efac; }
+    .err { color: #fca5a5; }
+    .pill { display:inline-block; padding: 4px 10px; border-radius:999px; background:#1e293b; font-size:12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <aside class="side">
+      <div class="card">
+        <h1>AnderBot</h1>
+        <div class="muted">真正可操作的前端控制台</div>
+        <div style="margin-top:10px;">
+          <span class="pill">当前角色：<strong id="role">__CONSOLE_ROLE__</strong></span>
+        </div>
+        <form method="post" action="/console/logout" style="margin-top:12px;">
+          <button class="secondary" type="submit">退出登录</button>
+        </form>
+      </div>
+      <div class="card">
+        <h2>运行状态</h2>
+        <div id="status" class="status">连接中…</div>
+      </div>
+      <div class="card">
+        <h2>发送消息</h2>
+        <div class="grid">
+          <div class="row">
+            <label class="muted">群号</label>
+            <input id="groupId" placeholder="123456" />
+            <textarea id="groupMessage" placeholder="支持纯文本、CQ 码，例如：[CQ:at,qq=123456] 你好"></textarea>
+            <button id="sendGroupBtn">发送群消息</button>
+          </div>
+          <div class="row">
+            <label class="muted">QQ 号</label>
+            <input id="userId" placeholder="10001" />
+            <textarea id="privateMessage" placeholder="支持纯文本、CQ 码"></textarea>
+            <button id="sendPrivateBtn">发送私聊消息</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>控制台广播</h2>
+        <textarea id="systemMessage" placeholder="给控制台所有连接发一条系统提示"></textarea>
+        <div class="toolbar">
+          <button id="broadcastBtn" class="danger">发送广播</button>
+          <button id="refreshBtn" class="secondary">刷新状态</button>
+        </div>
+        <div id="actionResult" class="hint"></div>
+      </div>
+      <div class="card">
+        <h2>能力入口</h2>
+        <div><code>GET /status</code></div>
+        <div><code>GET /mcp</code></div>
+        <div><code>GET /mcp/tools</code></div>
+        <div><code>POST /mcp/call</code></div>
+        <div><code>POST /webhooks/{source}</code></div>
+        <div><code>WS /ws/console</code></div>
+      </div>
+    </aside>
+    <main class="main">
+      <div class="card">
+        <h2>实时事件</h2>
+        <div class="muted">NapCat 消息、Webhook、MCP 调用、控制台动作都会显示在这里。入站消息会附带 raw text / segments / CQ 三种形态。</div>
+      </div>
+      <div id="events" class="card events"></div>
+    </main>
+  </div>
+  <script>
+    const statusEl = document.getElementById('status');
+    const eventsEl = document.getElementById('events');
+    const actionResultEl = document.getElementById('actionResult');
+    const roleEl = document.getElementById('role');
+    const wsUrl = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/console';
+    const ws = new WebSocket(wsUrl);
+    let role = roleEl.textContent.trim() || 'viewer';
+
+    function roleLevel(r) {
+      return ({ viewer: 1, operator: 2, admin: 3 })[r] || 0;
+    }
+
+    function applyPermissions() {
+      const operator = roleLevel(role) >= 2;
+      const admin = roleLevel(role) >= 3;
+      document.getElementById('sendGroupBtn').disabled = !operator;
+      document.getElementById('sendPrivateBtn').disabled = !operator;
+      document.getElementById('broadcastBtn').disabled = !admin;
+      document.getElementById('groupId').disabled = !operator;
+      document.getElementById('groupMessage').disabled = !operator;
+      document.getElementById('userId').disabled = !operator;
+      document.getElementById('privateMessage').disabled = !operator;
+      document.getElementById('systemMessage').disabled = !admin;
+    }
+
+    function setActionResult(text, ok = true) {
+      actionResultEl.textContent = text;
+      actionResultEl.className = 'hint ' + (ok ? 'ok' : 'err');
+    }
+
+    function addEvent(item) {
+      const div = document.createElement('div');
+      div.className = 'event';
+      div.innerHTML = `<span class="badge">${item.type}</span><span class="muted">${item.time || ''}</span>\n${JSON.stringify(item.data, null, 2)}`;
+      eventsEl.prepend(div);
+    }
+
+    function renderStatus(data) {
+      const stats = data.stats || {};
+      const app = data.app || {};
+      const plugins = data.plugins || [];
+      const auth = data.auth || {};
+      if (auth.console_role) {
+        role = auth.console_role;
+        roleEl.textContent = role;
+        applyPermissions();
+      }
+      statusEl.innerHTML = `
+        <div>环境：<strong>${app.env || '-'}</strong></div>
+        <div>监听：<strong>${app.host || '-'}:${app.port || '-'}</strong></div>
+        <div>NapCat：<strong>${app.napcat_ws_url || '-'}</strong></div>
+        <div>控制台角色：<strong>${auth.console_role || '-'}</strong></div>
+        <div>启用角色：<strong>${(auth.roles_enabled || []).join(', ') || '未启用 token'}</strong></div>
+        <div>收到事件：<strong>${stats.received_events || 0}</strong></div>
+        <div>发送消息：<strong>${stats.sent_messages || 0}</strong></div>
+        <div>Webhook 接收：<strong>${stats.inbound_webhooks || 0}</strong></div>
+        <div>Webhook 拒绝：<strong>${stats.webhook_rejected || 0}</strong></div>
+        <div>NapCat 重连：<strong>${stats.napcat_reconnects || 0}</strong></div>
+        <div>发送失败：<strong>${stats.napcat_send_failures || 0}</strong></div>
+        <div>MCP 调用：<strong>${stats.mcp_calls || 0}</strong></div>
+        <div>控制台连接：<strong>${stats.console_clients || 0}</strong></div>
+        <div>插件：<strong>${plugins.map(x => x.name).join(', ') || '-'}</strong></div>
+      `;
+    }
+
+    function sendAction(payload) {
+      if (ws.readyState !== WebSocket.OPEN) {
+        setActionResult('WebSocket 未连接，操作失败', false);
+        return;
+      }
+      ws.send(JSON.stringify(payload));
+    }
+
+    document.getElementById('sendGroupBtn').onclick = () => {
+      sendAction({
+        action: 'send_group_message',
+        group_id: Number(document.getElementById('groupId').value),
+        message: document.getElementById('groupMessage').value,
+      });
+    };
+
+    document.getElementById('sendPrivateBtn').onclick = () => {
+      sendAction({
+        action: 'send_private_message',
+        user_id: Number(document.getElementById('userId').value),
+        message: document.getElementById('privateMessage').value,
+      });
+    };
+
+    document.getElementById('broadcastBtn').onclick = () => {
+      sendAction({
+        action: 'broadcast_system_message',
+        message: document.getElementById('systemMessage').value,
+      });
+    };
+
+    document.getElementById('refreshBtn').onclick = () => {
+      sendAction({ action: 'refresh_status' });
+    };
+
+    ws.onmessage = (event) => {
+      const payload = JSON.parse(event.data);
+      if (payload.type === 'console.snapshot') {
+        eventsEl.innerHTML = '';
+        (payload.data || []).slice().reverse().forEach(addEvent);
+        return;
+      }
+      if (payload.type === 'status.snapshot') {
+        renderStatus(payload.data || {});
+        return;
+      }
+      if (payload.type === 'auth.role') {
+        role = payload.data?.role || role;
+        roleEl.textContent = role;
+        applyPermissions();
+        return;
+      }
+      if (payload.type === 'action.ok') {
+        setActionResult(`操作成功：${payload.data?.action || ''}`, true);
+        return;
+      }
+      if (payload.type === 'action.error') {
+        setActionResult(payload.data?.detail || '操作失败', false);
+        return;
+      }
+      addEvent(payload);
+    };
+
+    ws.onopen = () => {
+      applyPermissions();
+      setActionResult('控制台已连接', true);
+    };
+
+    ws.onclose = () => {
+      statusEl.textContent = 'WebSocket 已断开，请刷新页面';
+      setActionResult('控制台连接已断开', false);
+    };
+
+    applyPermissions();
+  </script>
+</body>
+</html>
