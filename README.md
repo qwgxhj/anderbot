@@ -27,7 +27,7 @@ AnderBot 是一个面向开放生态设计的 QQ 机器人框架，基于 NapCat
 
 ```bash
 # 如果是从 Git 克隆
-git clone <repository-url> anderbot
+git clone https://github.com/qwgxhj/anderbot.git
 cd anderbot
 
 # 或者直接将项目上传到服务器，然后进入目录
